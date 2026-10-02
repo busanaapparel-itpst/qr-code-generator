@@ -1,4 +1,4 @@
-const CACHE = 'qr-excel-v2';
+const CACHE = 'qr-excel-v3';
 const CDN = [
   'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js',

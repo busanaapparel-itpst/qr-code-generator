@@ -33,10 +33,10 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .pages{display:flex;flex-wrap:wrap;gap:18px}
 .page{container-type:inline-size;width:100%;max-width:440px;aspect-ratio:210/297;background:#fff;color:#000;padding:3.8%;box-shadow:0 1px 6px rgba(0,0,0,.25)}
 .sheet{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(5,1fr);height:100%}
-.cell{border:1px dashed #999;display:flex;align-items:center;gap:3.5cqw;padding:0 1.6cqw;font-size:2cqw;line-height:1.25;overflow:hidden}
-.cell svg{flex:0 0 40%;width:40%;height:auto;background:#fff}
+.cell{border:1px dashed #999;display:flex;align-items:center;gap:3cqw;padding:0 1.6cqw;font-size:2cqw;line-height:1.2;overflow:hidden}
+.cell svg{flex:0 0 38%;width:38%;height:auto;background:#fff}
 .cell small{display:block;color:#6e6e6e;font-size:1.6cqw}
-.cell b{display:block;font-size:2.3cqw;margin-bottom:1.2cqw;word-break:break-word}
+.cell b{display:block;font-size:2.1cqw;margin-bottom:.8cqw;word-break:break-all}
 </style>
 </head>
 <body>
@@ -101,7 +101,8 @@ async function readFile(f){
       pocf: findKey(keys,'POCF',0),
       date: findKey(keys,'BC Date',6),
       status: findKey(keys,'Status',9),
-      color: findKey(keys,'Color Description',3)
+      color: findKey(keys,'Color Description',3),
+      roll: findKey(keys,'Roll Number',4)
     };
     if(!k.status){ info('Kolom Status tidak ditemukan.', true); return; }
     let skipped = 0; items = [];
@@ -112,6 +113,7 @@ async function readFile(f){
         pocf: String(r[k.pocf] ?? '').trim(),
         date: String(r[k.date] ?? '').trim(),
         color: String(r[k.color] ?? '').trim(),
+        roll: String(r[k.roll] ?? '').trim(),
         status
       });
     }
@@ -129,7 +131,9 @@ function renderPreview(){
     const cells = items.slice(p*PER_PAGE, p*PER_PAGE+PER_PAGE).map(it => `
       <div class="cell">${qrSVG(it.status)}
         <div><small>POCF</small><b>${esc(it.pocf)}</b>
+        <small>Roll Number</small><b>${esc(it.roll)}</b>
         <small>BC Date</small><b>${esc(it.date)}</b>
+        <small>Status</small><b>${esc(it.status)}</b>
         <small>Color Description</small><b>${esc(it.color)}</b></div>
       </div>`).join('');
     wrap.insertAdjacentHTML('beforeend', `<div class="page"><div class="sheet">${cells}</div></div>`);
@@ -139,7 +143,7 @@ function renderPreview(){
 function buildPDF(){
   const {jsPDF} = window.jspdf;
   const doc = new jsPDF({unit:'mm', format:'a4'});
-  const M = 8, CW = (210-2*M)/2, CH = (297-2*M)/5, QS = 44;
+  const M = 8, CW = (210-2*M)/2, CH = (297-2*M)/5, QS = 40;
   const total = Math.ceil(items.length/PER_PAGE);
 
   items.forEach((it, i) => {
@@ -158,17 +162,39 @@ function buildPDF(){
 
     // Teks
     const tx = x+QS+8, tw = CW-QS-12;
-    let ty = y+9;
-    const field = (label, value, maxLines) => {
-      doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(110);
-      doc.text(label, tx, ty); ty += 4;
-      doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(0);
-      const lines = doc.splitTextToSize(value || '-', tw).slice(0, maxLines);
-      doc.text(lines, tx, ty); ty += lines.length*4.3 + 3.5;
+    doc.setFont('helvetica','bold'); doc.setFontSize(9);
+    const wrap = (text, maxLines) => {
+      const out = []; let line = '';
+      for(const word of String(text || '-').split(/\s+/)){
+        let w = word;
+        while(doc.getTextWidth(w) > tw){            // pecah kata yang terlalu panjang
+          let i = w.length; while(i > 1 && doc.getTextWidth(w.slice(0,i)) > tw) i--;
+          if(line){ out.push(line); line = ''; }
+          out.push(w.slice(0,i)); w = w.slice(i);
+        }
+        const t = line ? line+' '+w : w;
+        if(doc.getTextWidth(t) <= tw) line = t; else { out.push(line); line = w; }
+      }
+      if(line) out.push(line);
+      if(out.length > maxLines){ const r = out.slice(0,maxLines); r[maxLines-1] = r[maxLines-1].replace(/.{0,3}$/,'...'); return r; }
+      return out;
     };
-    field('POCF', it.pocf, 2);
-    field('BC Date', it.date, 1);
-    field('Color Description', it.color, 3);
+    const fields = [
+      ['POCF', wrap(it.pocf,1)],
+      ['Roll Number', wrap(it.roll,1)],
+      ['BC Date', wrap(it.date,1)],
+      ['Status', wrap(it.status,2)],
+      ['Color Description', wrap(it.color,2)]
+    ];
+    const LBL = 2.9, LH = 3.8, GAP = 1.9;
+    const content = fields.reduce((h,f) => h + LBL + f[1].length*LH + GAP, 0) - GAP;
+    let ty = y + (CH-content)/2 + 2.2;
+    for(const [label, lines] of fields){
+      doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(110);
+      doc.text(label, tx, ty); ty += LBL;
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(0);
+      doc.text(lines, tx, ty + 0.6); ty += lines.length*LH + GAP;
+    }
   });
 
   for(let p=1;p<=total;p++){
