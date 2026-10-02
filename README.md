@@ -1,6 +1,6 @@
 # QR Code dari Excel (PWA)
 
-Aplikasi web untuk membuat QR code massal dari file Excel/CSV. Bisa dipasang sebagai aplikasi dan berjalan offline.
+Aplikasi web untuk membuat PDF A4 (10 QR code per halaman) dari kolom Status file Excel/CSV. Bisa dipasang sebagai aplikasi dan berjalan offline.
 
 ## Deploy ke GitHub Pages
 1. Buat repository baru di GitHub, lalu unggah semua isi folder ini (index.html, sw.js, manifest.webmanifest, folder icons).
