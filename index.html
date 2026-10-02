@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QR Code dari Excel</title>
+<meta name="theme-color" content="#0f6b5c">
+<meta name="description" content="Buat QR code massal dari file Excel, langsung di browser.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<style>
+:root{--bg:#f6f7f4;--card:#fff;--ink:#1d2421;--mute:#66706b;--line:#d9ded9;--accent:#0f6b5c;--accent-ink:#fff}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#141a18;--card:#1c2421;--ink:#e8eeea;--mute:#98a39d;--line:#32403b;--accent:#4cc3a8;--accent-ink:#0b1512}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:980px;margin:0 auto;padding:28px 18px 60px}
+h1{font-size:1.6rem;margin:0 0 4px}
+p.sub{margin:0 0 22px;color:var(--mute)}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:18px}
+.drop{border:2px dashed var(--line);border-radius:10px;padding:26px;text-align:center;cursor:pointer;color:var(--mute)}
+.drop.over,.drop:hover{border-color:var(--accent);color:var(--ink)}
+.row{display:flex;flex-wrap:wrap;gap:14px;align-items:end}
+label{display:flex;flex-direction:column;gap:4px;font-size:.9rem;color:var(--mute)}
+select,input[type=number]{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);min-width:160px}
+button{font:inherit;padding:9px 16px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);cursor:pointer}
+button.alt{background:transparent;color:var(--accent)}
+button:disabled{opacity:.45;cursor:not-allowed}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px}
+.item{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;text-align:center;break-inside:avoid}
+.item canvas{max-width:100%;height:auto;image-rendering:pixelated;background:#fff}
+.cap{font-size:.85rem;margin:6px 0;word-break:break-word}
+.item button{padding:5px 10px;font-size:.85rem}
+.msg{color:var(--mute);margin:8px 0 0;font-size:.9rem}
+.err{color:#b3261e}
+.hide{display:none}
+@media print{.panel,h1,p.sub{display:none}body{background:#fff}.item{border-color:#999}}
+</style>
+</head>
+<body>
+<main>
+  <h1>QR Code dari Excel</h1>
+  <p class="sub">Unggah file Excel, pilih kolom isi QR, lalu unduh hasilnya.</p>
+  <p class="sub"><button class="alt hide" id="install">Pasang sebagai aplikasi</button> <span id="offline" class="hide">Mode offline aktif.</span></p>
+
+  <div class="panel">
+    <div class="drop" id="drop" tabindex="0" role="button" aria-label="Pilih file Excel">
+      Seret file ke sini atau klik untuk memilih<br><small>.xlsx, .xls, atau .csv</small>
+    </div>
+    <input type="file" id="file" accept=".xlsx,.xls,.csv" class="hide">
+    <p class="msg" id="info">Belum ada file.</p>
+  </div>
+
+  <div class="panel hide" id="opts">
+    <div class="row">
+      <label>Kolom isi QR
+        <select id="colData"></select>
+      </label>
+      <label>Kolom label (opsional)
+        <select id="colLabel"></select>
+      </label>
+      <label>Ukuran (px)
+        <input type="number" id="size" value="300" min="100" max="1000" step="50">
+      </label>
+      <button id="go">Buat QR code</button>
+    </div>
+  </div>
+
+  <div class="panel hide" id="actions">
+    <div class="row">
+      <button id="zip">Unduh semua (ZIP)</button>
+      <button class="alt" id="print">Cetak</button>
+    </div>
+    <p class="msg" id="count"></p>
+  </div>
+
+  <div id="grid"></div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+let rows = [], cols = [], items = [];
+
+function info(t, err){ const e=$('info'); e.textContent=t; e.className='msg'+(err?' err':''); }
+
+function drawQR(canvas, text, size){
+  const qr = qrcode(0, 'M');
+  qr.addData(text); qr.make();
+  const n = qr.getModuleCount(), q = 4;
+  const cell = Math.max(1, Math.floor(size / (n + q*2)));
+  const full = cell * (n + q*2);
+  canvas.width = canvas.height = full;
+  const c = canvas.getContext('2d');
+  c.fillStyle = '#fff'; c.fillRect(0,0,full,full);
+  c.fillStyle = '#000';
+  for(let r=0;r<n;r++) for(let k=0;k<n;k++)
+    if(qr.isDark(r,k)) c.fillRect((k+q)*cell,(r+q)*cell,cell,cell);
+}
+
+function safeName(s, i){
+  const base = String(s).replace(/[^\w\- ]+/g,'').trim().slice(0,40) || 'qr';
+  return String(i+1).padStart(3,'0') + '_' + base + '.png';
+}
+
+function saveBlob(blob, name){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+}
+
+async function readFile(f){
+  try{
+    const wb = XLSX.read(await f.arrayBuffer(), {type:'array'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+    if(!rows.length){ info('File kosong atau tidak ada baris data.', true); return; }
+    cols = Object.keys(rows[0]);
+    $('colData').innerHTML = cols.map(c=>`<option>${esc(c)}</option>`).join('');
+    $('colLabel').innerHTML = '<option value="">(tanpa label)</option>' + cols.map(c=>`<option>${esc(c)}</option>`).join('');
+    $('colLabel').value = cols.length > 1 ? cols[1] : '';
+    $('opts').classList.remove('hide');
+    info(`${f.name}: ${rows.length} baris dari sheet "${wb.SheetNames[0]}".`);
+  }catch(e){ info('File tidak bisa dibaca. Pastikan formatnya .xlsx, .xls, atau .csv.', true); }
+}
+
+function esc(s){ return String(s).replace(/[&<>"]/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+
+function generate(){
+  const cd = $('colData').value, cl = $('colLabel').value;
+  const size = Math.min(1000, Math.max(100, +$('size').value || 300));
+  const grid = $('grid'); grid.innerHTML = ''; items = [];
+  let skipped = 0;
+  rows.forEach((r, i) => {
+    const text = String(r[cd] ?? '').trim();
+    if(!text){ skipped++; return; }
+    const label = cl ? String(r[cl] ?? '') : '';
+    const canvas = document.createElement('canvas');
+    try{ drawQR(canvas, text, size); }catch(e){ skipped++; return; }
+    const name = safeName(label || text, items.length);
+    items.push({canvas, name});
+    const d = document.createElement('div'); d.className = 'item';
+    d.appendChild(canvas);
+    const cap = document.createElement('div'); cap.className = 'cap';
+    cap.textContent = label || text; d.appendChild(cap);
+    const b = document.createElement('button'); b.className = 'alt'; b.textContent = 'Unduh PNG';
+    b.onclick = () => canvas.toBlob(bl => saveBlob(bl, name));
+    d.appendChild(b); grid.appendChild(d);
+  });
+  $('actions').classList.toggle('hide', !items.length);
+  $('count').textContent = `${items.length} QR code dibuat` + (skipped ? `, ${skipped} baris dilewati (kosong atau terlalu panjang).` : '.');
+}
+
+async function zipAll(){
+  const btn = $('zip'); btn.disabled = true; btn.textContent = 'Menyusun ZIP...';
+  const z = new JSZip();
+  for(const it of items){
+    const blob = await new Promise(r => it.canvas.toBlob(r));
+    z.file(it.name, blob);
+  }
+  saveBlob(await z.generateAsync({type:'blob'}), 'qrcode.zip');
+  btn.disabled = false; btn.textContent = 'Unduh semua (ZIP)';
+}
+
+const drop = $('drop'), fi = $('file');
+drop.onclick = () => fi.click();
+drop.onkeydown = e => { if(e.key==='Enter'||e.key===' '){ e.preventDefault(); fi.click(); } };
+fi.onchange = () => fi.files[0] && readFile(fi.files[0]);
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); e.dataTransfer.files[0] && readFile(e.dataTransfer.files[0]); };
+$('go').onclick = generate;
+$('zip').onclick = zipAll;
+$('print').onclick = () => window.print();
+
+// --- PWA ---
+if('serviceWorker' in navigator){
+  addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
+let deferred = null;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; $('install').classList.remove('hide'); });
+$('install').onclick = async () => { if(!deferred) return; deferred.prompt(); await deferred.userChoice; deferred = null; $('install').classList.add('hide'); };
+addEventListener('appinstalled', () => $('install').classList.add('hide'));
+const syncOnline = () => $('offline').classList.toggle('hide', navigator.onLine);
+addEventListener('online', syncOnline); addEventListener('offline', syncOnline); syncOnline();
+</script>
+</body>
+</html>
